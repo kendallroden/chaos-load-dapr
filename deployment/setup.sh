@@ -48,8 +48,7 @@ ASSIGNMENT_RESULT=$(az role assignment create --role "Azure Kubernetes Service C
 # add dapr to your cluster
 az k8s-extension create --cluster-type managedClusters --cluster-name $CLUSTERNAME --resource-group $RESOURCE_GROUP --name myDaprExtension --extension-type Microsoft.Dapr
 
-
-#install dapr
+#install chaos-mesh
 helm install chaos-mesh chaos-mesh/chaos-mesh --namespace=chaos-testing --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock
 
 # check if chaos pods are available
