@@ -13,10 +13,13 @@ RESOURCE_ID=$(az aks show -n $CLUSTERNAME -g $RESOURCE_GROUP --query "id" -o tsv
 helm repo add chaos-mesh https://charts.chaos-mesh.org
 helm repo update
 kubectl create ns chaos-testing
+helm install chaos-mesh chaos-mesh/chaos-mesh --namespace=chaos-testing --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock
 
 
-#enable chaos for aks - this is important. Otherwise you have to do it manually later on.
-#create target
+# Chaos Studio cannot inject faults against a resource unless that resource has been onboarded to Chaos Studio first. 
+# You onboard a resource to Chaos Studio by creating a target and capabilities on the resource. 
+
+# Create a Target for the AKS cluster 
 TARGET_ID=$(az rest --method put --url "https://management.azure.com/$RESOURCE_ID/providers/Microsoft.Chaos/targets/Microsoft-AzureKubernetesServiceChaosMesh?api-version=2021-09-15-preview" --body "{\"properties\":{}}" --query id -o tsv)
 echo $TARGET_ID
 
@@ -24,11 +27,14 @@ echo $TARGET_ID
 cp networkingchaos.template networkingchaos_working.json
 sed -i "s|MYCHAOSTARGET|$TARGET_ID|" networkingchaos_working.json
 
-az rest --method put --url "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.ContainerService/managedClusters/$CLUSTERNAME/providers/Microsoft.Chaos/targets/Microsoft-AzureKubernetesServiceChaosMesh/capabilities/NetworkChaos-2.1?api-version=2021-09-15-preview"  --body "{\"properties\":{}}"
+# Apply the capability with the target set 
+az rest --method put --url "https://management.azure.com/$RESOURCE_ID/providers/Microsoft.Chaos/targets/Microsoft-AzureKubernetesServiceChaosMesh/capabilities/NetworkChaos-2.1?api-version=2021-09-15-preview"  --body "{\"properties\":{}}"
 
-# create experiment
+
+# With your AKS cluster now onboarded, you can create your experiment. 
+# A chaos experiment defines the actions you want to take against target resources
 EXPERIMENT_NAME=NetworkingChaosExperiment$(date +%s)
-EXPERIMENT_PRINCIPAL_ID=$(az rest --method put --uri https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Chaos/experiments/$EXPERIMENT_NAME?api-version=2021-09-15-preview --body @networkingchaos_working.json --query identity.principalId -o tsv)
+EXPERIMENT_PRINCIPAL_ID=$(az rest --method put --uri "https://management.azure.com/$RESOURCE_ID/providers/Microsoft.Chaos/experiments/$EXPERIMENT_NAME?api-version=2021-09-15-preview --body @networkingchaos_working.json --query identity.principalId -o tsv)"
 
 # hack: we wait for 60 seconds here to make sure to avoid issues related to replication delays. This is pretty dirty and unstable. To be fixed later.
 sleep 60
